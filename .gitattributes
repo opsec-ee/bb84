@@ -2,11 +2,3 @@
 # Force all source to be classified as C (ISO C23)
 *.c     linguist-language=C
 *.h     linguist-language=C
- 
-# Exclude scan corpus and output dirs from language stats
-corpus/**           linguist-vendored
-logos-sarif/**      linguist-vendored
-logic-sarif/**      linguist-vendored
-logic-sarif2/**     linguist-vendored
-provenance/**       linguist-vendored
-build/**            linguist-vendored
