@@ -5,22 +5,19 @@
  * @author  H. Overman (ee)
  * @brief   BB84 QKD core types, constants, h(e) table
  *
- * 10 invocations x 8 runs on i7, -O3 -march=native -flto.
+ * 11 invocations x 8 runs on i7, -O3 -march=native -flto.
  * Cold-start confirmed (make clean && make, no cache advantage):
- *  Min:        0.0014 s
- *  Max:        0.0031 s
- *  Mean:       0.0021 s  (cold-start: 0.0019 s)
- *  Spread:     +/-49 -- 79%  (scheduler + cache jitter, 1.7ms window)
- *  Throughput: ~522,715 -- 781,977 photons/s
+ *  Min:        0.0012 s
+ *  Max:        0.0020 s
+ *  Mean:       0.0017 s
+ *  Spread:     +/-43.54%
+ *  Throughput: ~915,102 photons/s
  *
- * First invocation after make (0.0004 s) is a linker page-cache
- * artefact. All subsequent cold-start runs land in the band above.
- *
- * Gate-X rate: 3/80 sessions (3.75%) at 3% channel noise.
+ * Gate-X rate: 5/96 sessions (5.2%) at 3% channel noise.
  * Binomial(256, 0.03) tail above 11% threshold: ~4-5% per session.
  * Correct protocol behaviour. Not a bug.
  *
- * final_len range: 2..39 bytes across sessions.
+ * final_len range: 2..44 bytes across sessions.
  * QBER-dependent h(e) PA length. Lower QBER -> more secure bits.
  * Constant final_len would indicate a broken PA formula.
  *
@@ -164,30 +161,11 @@ typedef struct {
     uint64_t den;
 } ee_ratio_t;
 
-static inline ee_ratio_t ee_ratio_elapsed(clock_t start, clock_t end)
-{
-    return (ee_ratio_t){
-        .num = (uint64_t)(end - start),
-        .den = (uint64_t)CLOCKS_PER_SEC
-    };
-}
-
-static inline uint64_t ee_ratio_secs(ee_ratio_t r)
-{
-    return r.den ? r.num / r.den : 0u;
-}
-
-static inline uint64_t ee_ratio_frac10k(ee_ratio_t r)
-{
-    if (!r.den) return 0u;
-    return ((r.num % r.den) * 10000u) / r.den;
-}
-
-static inline uint64_t ee_ratio_throughput(uint64_t count, ee_ratio_t elapsed)
-{
-    if (!elapsed.num) return 0u;
-    return (count * elapsed.den) / elapsed.num;
-}
+/* Defined in bb84_types.c */
+ee_ratio_t ee_ratio_elapsed(clock_t start, clock_t end);
+uint64_t   ee_ratio_secs(ee_ratio_t r);
+uint64_t   ee_ratio_frac10k(ee_ratio_t r);
+uint64_t   ee_ratio_throughput(uint64_t count, ee_ratio_t elapsed);
 
 /*
  ==================================================================
@@ -224,47 +202,10 @@ typedef struct {
     uint64_t h_num;   /* h(e) numerator (over RATIO_DENOM) */
 } he_entry_t;
 
-/*
- * Table: e_num = QBER * 144000, h_num = h(QBER) * 144000
- * Computed offline (Python: -e*log2(e)-(1-e)*log2(1-e))*144000)
- * Verified: sum of all entries self-consistent.
- */
-/*
- * Correctness verification (Python):
- *   import math
- *   def h(e): return 0 if e==0 else -e*math.log2(e)-(1-e)*math.log2(1-e)
- *   for pct in range(12): print(pct, round(h(pct/100)*144000))
- *
- *   0  ->      0
- *   1  ->  11635     (h=0.08079)
- *   2  ->  20370     (h=0.14146)
- *   3  ->  27993     (h=0.19440)
- *   4  ->  34879     (h=0.24221)
- *   5  ->  41243     (h=0.28641)
- *   6  ->  47193     (h=0.32773)
- *   7  ->  52773     (h=0.36648)
- *   8  ->  58006     (h=0.40282)
- *   9  ->  62862     (h=0.43654)
- *  10  ->  67535     (h=0.46899)
- *  11  ->  72000     (h=0.50000 -- exact)
- */
-static const he_entry_t HE_TABLE[] = {
-    {     0u,     0u },   /*  0%  h=0.00000 */
-    {  1440u,  11635u },  /*  1%  h=0.08079 */
-    {  2880u,  20370u },  /*  2%  h=0.14146 */
-    {  4320u,  27993u },  /*  3%  h=0.19440 */
-    {  5760u,  34879u },  /*  4%  h=0.24221 */
-    {  7200u,  41243u },  /*  5%  h=0.28641 */
-    {  8640u,  47193u },  /*  6%  h=0.32773 */
-    { 10080u,  52773u },  /*  7%  h=0.36648 */
-    { 11520u,  58006u },  /*  8%  h=0.40282 */
-    { 12960u,  62862u },  /*  9%  h=0.43654 */
-    { 14400u,  67535u },  /* 10%  h=0.46899 */
-    { 15840u,  72000u },  /* 11%  h=0.50000 (threshold -- exact) */
-};
+constexpr size_t HE_TABLE_LEN = 12u;
 
-constexpr size_t HE_TABLE_LEN =
-    sizeof(HE_TABLE) / sizeof(HE_TABLE[0]);
+/* Defined in bb84_types.c */
+extern const he_entry_t HE_TABLE[HE_TABLE_LEN];
 
 /*
  * he_lookup -- integer linear interpolation of h(e)
@@ -282,40 +223,7 @@ constexpr size_t HE_TABLE_LEN =
  *
  * Contract: {{0 [ e_num:u64 (AS/.\IS) h_num:u64 ] 1}}
  */
-[[nodiscard]]
-static inline uint64_t he_lookup(uint64_t e_num)
-{
-    if (e_num == 0u)               return 0u;
-    if (e_num >= QBER_THRESH_N)    return RATIO_DENOM; /* capacity boundary */
-
-    /* find bracket */
-    size_t lo = 0u;
-    size_t hi = HE_TABLE_LEN - 1u;
-
-    for (size_t i = 0u; i < HE_TABLE_LEN - 1u; i++) {
-        if (e_num >= HE_TABLE[i].e_num &&
-            e_num <  HE_TABLE[i + 1u].e_num) {
-            lo = i;
-            hi = i + 1u;
-            break;
-        }
-    }
-
-    uint64_t e_lo   = HE_TABLE[lo].e_num;
-    uint64_t e_hi   = HE_TABLE[hi].e_num;
-    uint64_t h_lo   = HE_TABLE[lo].h_num;
-    uint64_t h_hi   = HE_TABLE[hi].h_num;
-    uint64_t e_span = e_hi - e_lo;
-
-    if (e_span == 0u) return h_lo;
-
-    /* h = h_lo + (h_hi - h_lo) * (e - e_lo) / (e_hi - e_lo)
-     * All integer -- defer division to last step only.          */
-    uint64_t h_span = (h_hi > h_lo) ? h_hi - h_lo : h_lo - h_hi;
-    uint64_t frac   = h_span * (e_num - e_lo) / e_span;
-
-    return (h_hi >= h_lo) ? h_lo + frac : h_lo - frac;
-}
+[[nodiscard]] uint64_t he_lookup(uint64_t e_num);
 
 /*
  ==================================================================
@@ -406,41 +314,9 @@ typedef struct {
     uint64_t sample;
 } RatioQBER;
 
-[[nodiscard]]
-static inline bool qber_accept(RatioQBER q)
-{
-    if (q.sample == 0u) return false;
-    return q.errors * RATIO_DENOM <= QBER_THRESH_N * q.sample;
-}
-
-/*
- * qber_accept standpoints:
- * FRONT: RatioQBER{errors,sample} -- measured channel error pair (AS)
- * LEAD:  errors*RATIO_DENOM <= QBER_THRESH_N*sample -- cross-multiply (Pivot)
- *        Equivalent to errors/sample <= threshold with no division.
- * REAR:  bool -- session proceed/abort decision (IS)
- *   Z: sample == 0 (no measurement; returns false -- conservative)
- *   0: errors/sample >  QBER_THRESH_N/RATIO_DENOM (abort indicated)
- *   1: errors/sample <= QBER_THRESH_N/RATIO_DENOM (channel acceptable)
- * Contract: {{0 [ RatioQBER (AS/.\IS) bool ] 1}}
- */
-
-/*
- * qber_to_enum standpoints:
- * FRONT: RatioQBER{errors,sample} -- measured error pair (AS)
- * LEAD:  (errors * RATIO_DENOM) / sample -- ratio normalisation (Pivot)
- *        Converts errors/sample fraction into numerator over RATIO_DENOM.
- * REAR:  uint64_t e_num -- QBER as numerator; he_lookup() input (IS)
- *   Z: sample == 0 (returns 0 -- no measurement)
- *   1: e_num in [0, RATIO_DENOM]; monotone in errors/sample
- * Contract: {{0 [ RatioQBER (AS/.\IS) uint64_t ] 1}}
- */
-[[nodiscard]]
-static inline uint64_t qber_to_enum(RatioQBER q)
-{
-    if (q.sample == 0u) return 0u;
-    return (q.errors * RATIO_DENOM) / q.sample;
-}
+/* Defined in bb84_types.c */
+[[nodiscard]] bool     qber_accept(RatioQBER q);
+[[nodiscard]] uint64_t qber_to_enum(RatioQBER q);
 
 /*
  ==================================================================

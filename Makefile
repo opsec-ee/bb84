@@ -9,8 +9,8 @@ DFLAGS = -DNDEBUG
 LIBS   = -lpthread
 
 CFLAGS  = $(STD) $(WARN) $(OPT) $(DFLAGS)
-SRCS    = bb84_main.c bb84_ramstore.c bb84_front.c bb84_lead.c \
-          bb84_reconcile.c bb84_rear.c
+SRCS    = bb84_main.c bb84_types.c bb84_sidecar.c bb84_ramstore.c \
+          bb84_front.c bb84_lead.c bb84_reconcile.c bb84_rear.c
 OBJS    = $(SRCS:.c=.o)
 TARGET  = bb84
 

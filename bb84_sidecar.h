@@ -84,28 +84,9 @@ typedef struct {
  *
  * Contract: {{0 [ BB84Ctx* (AS/.\IS) abort_flag=1 ] 1}}
  */
-static inline void ctx_abort(BB84Ctx *ctx)
-{
-    atomic_store_explicit(&ctx->abort_flag, 1u, memory_order_relaxed);
-}
-
-/*
- * ctx_aborted -- check abort_flag after barrier
- *
- * FRONT: upstream barrier passed -- upstream state is committed (AS)
- * LEAD:  atomic_load(acquire) -- sees all stores from upstream (Pivot)
- * REAR:  bool -- true if session is in Gate-X state (IS)
- *   0: false -- proceed normally
- *   1: true  -- return GR_X without touching RAMStore
- *
- * Contract: {{0 [ BB84Ctx* (AS/.\IS) bool ] 1}}
- */
-[[nodiscard]]
-static inline bool ctx_aborted(BB84Ctx *ctx)
-{
-    return atomic_load_explicit(&ctx->abort_flag,
-                                memory_order_acquire) != 0u;
-}
+/* Defined in bb84_sidecar.c */
+void ctx_abort(BB84Ctx *ctx);
+[[nodiscard]] bool ctx_aborted(BB84Ctx *ctx);
 
 /*
  ==================================================================
@@ -143,53 +124,10 @@ void *bb84_rear(void *ctx);
  *
  * Contract: {{0 [ uint64_t* (AS/.\IS) *out filled ] 1}}
  */
-[[nodiscard]]
-static inline GateResult rng_u64(uint64_t *out)
-{
-    ssize_t r = getrandom(out, sizeof *out, 0);
-    if (r != (ssize_t)sizeof *out)
-        return GR_X("getrandom failed");
-    return GR_1(0);
-}
-
-/*
- * rng_bytes -- getrandom wrapper, arbitrary length
- *
- * FRONT: (buf, n) -- destination buffer and byte count (AS)
- * LEAD:  getrandom(buf, n, 0) -- kernel CSPRNG fills buf (Pivot)
- * REAR:  buf[0..n) -- n bytes from kernel entropy pool (IS)
- *   X: getrandom returned short read or error; buf contents undefined
- *   1: buf contains n cryptographic random bytes
- * Contract: {{0 [ (buf,n) (AS/.\IS) buf filled ] 1}}
- */
-[[nodiscard]]
-static inline GateResult rng_bytes(void *buf, size_t n)
-{
-    ssize_t r = getrandom(buf, n, 0);
-    if (r < 0 || (size_t)r != n)
-        return GR_X("getrandom failed");
-    return GR_1(0);
-}
-
-/*
- * coin_flip -- pure, no IO; takes pre-obtained random value
- *
- * Returns true with probability n/RATIO_DENOM.
- * Modulo bias negligible: RATIO_DENOM=144000, UINT64_MAX/144000
- * gives ~2.56e14 complete cycles -- bias < 2^-40.
- *
- * FRONT: (rng_val, n) -- externally obtained randomness (AS)
- * LEAD:  rng_val % RATIO_DENOM < n -- integer comparison (Pivot)
- * REAR:  bool -- deterministic given inputs (IS)
- *   Z: never
- *   1: true with probability n/RATIO_DENOM
- * Contract: {{0 [ (uint64_t,uint64_t) (AS/.\IS) bool ] 1}}
- */
-[[nodiscard]]
-static inline bool coin_flip(uint64_t rng_val, uint64_t n)
-{
-    return (rng_val % RATIO_DENOM) < n;
-}
+/* Defined in bb84_sidecar.c */
+[[nodiscard]] GateResult rng_u64(uint64_t *out);
+[[nodiscard]] GateResult rng_bytes(void *buf, size_t n);
+[[nodiscard]] bool       coin_flip(uint64_t rng_val, uint64_t n);
 
 /*
  ==================================================================
@@ -282,20 +220,7 @@ static inline void bit_flip(uint64_t *arr, size_t i)
  *   1: arr is a uniform random permutation
  ==================================================================
  */
-[[nodiscard]]
-static inline GateResult fisher_yates(size_t *arr, size_t n)
-{
-    for (size_t i = n - 1u; i > 0u; i--) {
-        uint64_t rv;
-        GateResult r = rng_u64(&rv);
-        if (!GR_VALID(r)) return r;
-
-        size_t j   = (size_t)(rv % (uint64_t)(i + 1u));
-        size_t tmp = arr[i];
-        arr[i]     = arr[j];
-        arr[j]     = tmp;
-    }
-    return GR_1(0);
-}
+/* Defined in bb84_sidecar.c */
+[[nodiscard]] GateResult fisher_yates(size_t *arr, size_t n);
 
 #endif /* BB84_SIDECAR_H */
