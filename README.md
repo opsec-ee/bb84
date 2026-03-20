@@ -362,6 +362,16 @@ find . -name '*.c' -o -name '*.h' -o -name 'Makefile' | xargs touch
 make clean && make
 ```
 
+On first run, startup prints:
+
+```
+Self-test: PASS (5 checks)
+```
+
+Five checks on known mathematical truths (he_lookup boundaries,
+qber_accept threshold, words_for_bits boundary) run before any
+session. Failure halts with a named diagnostic.
+
 ---
 
 ## File Structure
@@ -369,13 +379,19 @@ make clean && make
 ```
 bb84_types.h       Core types, ee_ratio_t, h(e) table, RAMStore,
                    GateResult, static_asserts, IFP invariants
-bb84_sidecar.h     BB84Ctx, barriers, abort_flag, RNG primitives,
-                   bit-array ops, Fisher-Yates
+bb84_types.c       ee_ratio helpers, HE_TABLE, he_lookup,
+                   qber_accept, qber_to_enum
+bb84_sidecar.h     BB84Ctx, barriers, abort_flag, bit-array ops
+                   (single-expression static inline only)
+bb84_sidecar.c     ctx_abort, ctx_aborted, rng_u64, rng_bytes,
+                   coin_flip, fisher_yates
 bb84_ramstore.h/c  mmap slab allocation, mprotect sealing
 bb84_front.c       FRONT sidecar: quantum channel simulation
 bb84_lead.c        LEAD sidecar: basis reconciliation
 bb84_reconcile.h/c RECONCILE sidecar: Cascade-lite 4-pass
 bb84_rear.c        REAR sidecar: QBER estimation + PA + confirmation
+bb84_selftest.h/c  Startup self-test: 5 checks on known mathematical
+                   truths. Runs before any session. Halts on failure.
 bb84_main.c        Thread launch, ee_ratio_t timing, 8-run bench
 Makefile
 LICENSE
@@ -415,3 +431,6 @@ The 2021 EAR amendment eliminated the general notification
 requirement for standard publicly available encryption source code.
 This software implements a published, non-proprietary protocol
 and does not constitute non-standard cryptography under EAR Part 772.
+## License
+
+AI was helpful in creating the code, every effort by me to ensure it's correctness.
