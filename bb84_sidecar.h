@@ -133,66 +133,30 @@ void *bb84_rear(void *ctx);
  ==================================================================
  * BIT ARRAY HELPERS
  * Packed uint64_t, LSB-first within each word.
- * words_for_bits() is defined in bb84_types.h.
+ * words_for_bits() defined in bb84_types.h.
+ *
+ * Single-expression ops -- name and body are the contract.
+ * Annotation here would be noise (ppo-2: silence where
+ * structure is self-evident).
  ==================================================================
  */
 
-/*
- * bit_set -- set bit i in packed array
- *
- * FRONT: arr[i/64] word -- current packed state (AS)
- * LEAD:  arr[i/64] |= (1ULL << (i%64)) -- bitwise OR (Pivot)
- * REAR:  bit i == 1; bit_get(arr,i) == 1 round-trips (IS)
- *   Z: never
- *   1: always (pure bit operation)
- * Contract: {{0 [ (arr,i) (AS/.\IS) arr[i]=1 ] 1}}
- */
 static inline void bit_set(uint64_t *arr, size_t i)
 {
     arr[i / 64u] |= (1ULL << (i % 64u));
 }
 
-/*
- * bit_clr -- clear bit i in packed array
- *
- * FRONT: arr[i/64] word -- current packed state (AS)
- * LEAD:  arr[i/64] &= ~(1ULL << (i%64)) -- bitwise AND-NOT (Pivot)
- * REAR:  bit i == 0; bit_get(arr,i) == 0 round-trips (IS)
- *   Z: never
- *   1: always
- * Contract: {{0 [ (arr,i) (AS/.\IS) arr[i]=0 ] 1}}
- */
 static inline void bit_clr(uint64_t *arr, size_t i)
 {
     arr[i / 64u] &= ~(1ULL << (i % 64u));
 }
 
-/*
- * bit_get -- read bit i from packed array
- *
- * FRONT: arr[i/64] word -- packed state to inspect (AS)
- * LEAD:  (arr[i/64] >> (i%64)) & 1 -- extraction shift (Pivot)
- * REAR:  uint8_t in {0,1} -- extracted bit value (IS)
- *   Z: never
- *   1: always; result in {0,1} by mask guarantee
- * Contract: {{0 [ (arr,i) (AS/.\IS) uint8_t{0|1} ] 1}}
- */
 [[nodiscard]]
 static inline uint8_t bit_get(const uint64_t *arr, size_t i)
 {
     return (uint8_t)((arr[i / 64u] >> (i % 64u)) & 1u);
 }
 
-/*
- * bit_flip -- invert bit i in packed array
- *
- * FRONT: arr[i/64] word -- current packed state (AS)
- * LEAD:  arr[i/64] ^= (1ULL << (i%64)) -- bitwise XOR (Pivot)
- * REAR:  bit i inverted; XOR is self-inverse, round-trip holds (IS)
- *   Z: never
- *   1: always; bit_get(arr,i) == 1 - prior_value
- * Contract: {{0 [ (arr,i) (AS/.\IS) arr[i] XOR= 1 ] 1}}
- */
 static inline void bit_flip(uint64_t *arr, size_t i)
 {
     arr[i / 64u] ^= (1ULL << (i % 64u));

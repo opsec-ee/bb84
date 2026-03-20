@@ -38,6 +38,7 @@
 #include "bb84_types.h"
 #include "bb84_ramstore.h"
 #include "bb84_sidecar.h"
+#include "bb84_selftest.h"
 
 constexpr int BENCH_RUNS = 8;
 
@@ -270,6 +271,23 @@ int main(void)
     printf("BB84 QKD Simulation v2.1\n");
     printf("C23 / Cascade-lite + h(e) PA + RAMStore + 4-sidecar\n");
     printf("==========================================\n");
+
+    /*
+     * Self-test before any external interaction (ppo-2).
+     * Checks known mathematical truths on the ratio system
+     * and bit-packing. Halts on any failure.
+     */
+    {
+        GateResult st = bb84_self_test();
+        if (!GR_VALID(st)) {
+            fprintf(stderr,
+                "startup self-test FAILED: %s\n",
+                st.reason ? st.reason : "unknown");
+            return 1;
+        }
+        printf("  self-test                   PASS (%llu checks)\n",
+               (unsigned long long)st.value);
+    }
     printf("  photons          = %zu\n",   BB84_N_PHOTONS);
     printf("  sample_n         = %zu\n",   BB84_SAMPLE_N);
     printf("  cascade_passes   = %u\n",    CASCADE_PASSES);
