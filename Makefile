@@ -1,8 +1,8 @@
-# BB84 QKD Simulation v2.1
+# BB84 QKD Simulation v2.2
 # Requires: gcc 14+ (C23), pthreads, Linux (mmap, getrandom)
 
 CC     = gcc
-STD    = -std=c2x
+STD    = -std=c23
 WARN   = -Wall -Wextra -Wpedantic
 OPT    = -O3 -march=native -flto -funroll-loops
 DFLAGS = -DNDEBUG
