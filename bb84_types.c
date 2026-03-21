@@ -1,7 +1,7 @@
 /*
  ==================================================================
  * @file    bb84_types.c
- * @version 2.1
+ * @version 2.2
  * @author  H. Overman (ee)
  * @brief   ee_ratio_t helpers, h(e) table and lookup,
  *          RatioQBER functions
@@ -59,19 +59,19 @@ const he_entry_t HE_TABLE[HE_TABLE_LEN] = {
 
 /*
  * ee_ratio_elapsed
- * FRONT: (start, end) -- clock_t tick pair from kernel (AS)
- * LEAD:  end - start gives tick delta; den = CLOCKS_PER_SEC (Pivot)
- * REAR:  ee_ratio_t{num=delta, den=CLOCKS_PER_SEC} (IS)
- *   Z: den == 0 (clock unavailable)
- *   1: num/den is exact elapsed time
- * Contract: {{0 [ (clock_t,clock_t) (AS/.\IS) ee_ratio_t ] 1}}
+ * FRONT: (t0, t1) -- CLOCK_MONOTONIC timespec pair (AS)
+ * LEAD:  (t1.sec-t0.sec)*1e9 + (t1.nsec-t0.nsec) -- ns delta (Pivot)
+ *        Exact integer. No IEEE 754.
+ * REAR:  ee_ratio_t{num=ns_delta, den=1,000,000,000} (IS)
+ *   Z: impossible by construction
+ *   1: exact wall time rational, monotonically non-decreasing
+ * Contract: {{0 [ (timespec,timespec) (AS/.\IS) ee_ratio_t ] 1}}
  */
-ee_ratio_t ee_ratio_elapsed(clock_t start, clock_t end)
+ee_ratio_t ee_ratio_elapsed(struct timespec t0, struct timespec t1)
 {
-    return (ee_ratio_t){
-        .num = (uint64_t)(end - start),
-        .den = (uint64_t)CLOCKS_PER_SEC
-    };
+    uint64_t ns = (uint64_t)(t1.tv_sec  - t0.tv_sec)  * 1000000000ull
+                + (uint64_t)(t1.tv_nsec - t0.tv_nsec);
+    return (ee_ratio_t){ .num = ns, .den = 1000000000ull };
 }
 
 /*
