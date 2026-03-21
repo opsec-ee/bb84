@@ -1,7 +1,7 @@
 /*
  ==================================================================
  * @file    bb84_main.c
- * @version 2.1
+ * @version 2.2
  * @brief   BB84 QKD simulation entry point and 8-run bench
  *
  * Four sidecar threads, three barriers:
@@ -13,21 +13,13 @@
  * arithmetic -- no floats, no printf %f.
  *
  * Build (release):
- *   gcc -std=c23 -O3 -march=native -flto -Wall -Wextra -DNDEBUG \
- *       -funroll-loops -lpthread                                  \
- *       bb84_main.c bb84_ramstore.c bb84_front.c bb84_lead.c     \
- *       bb84_reconcile.c bb84_rear.c -o bb84
+ *   gcc -std=c23 -O3 -march=native -flto -funroll-loops -DNDEBUG -Wall -Wextra -Wpedantic -lpthread bb84_main.c bb84_types.c bb84_sidecar.c bb84_ramstore.c bb84_front.c bb84_lead.c bb84_reconcile.c bb84_rear.c bb84_selftest.c -o bb84
  *
  * Build (debug):
- *   gcc -std=c23 -O0 -g -Wall -Wextra -lpthread                  \
- *       bb84_main.c bb84_ramstore.c bb84_front.c bb84_lead.c     \
- *       bb84_reconcile.c bb84_rear.c -o bb84_dbg
+ *   gcc -std=c23 -O0 -g -Wall -Wextra -Wpedantic -lpthread bb84_main.c bb84_types.c bb84_sidecar.c bb84_ramstore.c bb84_front.c bb84_lead.c bb84_reconcile.c bb84_rear.c bb84_selftest.c -o bb84_dbg
  *
  * Build (asan):
- *   gcc -std=c23 -O1 -g -fsanitize=address,undefined             \
- *       -fno-omit-frame-pointer -lpthread                        \
- *       bb84_main.c bb84_ramstore.c bb84_front.c bb84_lead.c     \
- *       bb84_reconcile.c bb84_rear.c -o bb84_asan
+ *   gcc -std=c23 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer -Wpedantic -lpthread bb84_main.c bb84_types.c bb84_sidecar.c bb84_ramstore.c bb84_front.c bb84_lead.c bb84_reconcile.c bb84_rear.c bb84_selftest.c -o bb84_asan
  ==================================================================
  */
 #define _GNU_SOURCE
@@ -111,7 +103,8 @@ static GateResult run_session(RAMStore *store, ee_ratio_t *elapsed)
     pthread_barrier_init(&ctx.barrier_rq, nullptr, 2); /* REAR + RECONCILE      */
     pthread_barrier_init(&ctx.barrier_rc, nullptr, 2); /* RECONCILE + REAR      */
 
-    clock_t t0 = clock();
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
 
     pthread_t front_tid, lead_tid, rec_tid, rear_tid;
     pthread_create(&front_tid, nullptr, bb84_front,     &ctx);
@@ -126,7 +119,7 @@ static GateResult run_session(RAMStore *store, ee_ratio_t *elapsed)
     pthread_join(rec_tid,   (void **)&rr);
     pthread_join(rear_tid,  (void **)&rear_r);
 
-    clock_t t1 = clock();
+    clock_gettime(CLOCK_MONOTONIC, &t1);
     *elapsed = ee_ratio_elapsed(t0, t1);
 
     if (fr)     free(fr);
@@ -197,9 +190,9 @@ static void print_session(const RAMStore *store,
  ==================================================================
  * BENCH -- 8-run timing in ratio arithmetic
  *
- * min/max/mean all computed as uint64_t numerators over
- * CLOCKS_PER_SEC. Spread = (max-min)*100/mean as integer %.
- * No floats.
+ * min/max/mean computed as uint64_t nanosecond numerators over
+ * denominator 1,000,000,000. Spread = (max-min)*100/mean as
+ * integer %. No floats. CLOCK_MONOTONIC wall time.
  ==================================================================
  */
 static void bench(void)
@@ -236,14 +229,13 @@ static void bench(void)
                gate_str(gr.state));
     }
 
-    uint64_t mean      = sum / (uint64_t)BENCH_RUNS;
-    uint64_t den       = times[0] ? times[0] : 1u;  /* use CLOCKS_PER_SEC */
-    (void)den;
+    uint64_t mean = sum / (uint64_t)BENCH_RUNS;
+    (void)times;
 
-    /* Use CLOCKS_PER_SEC as denominator for all ratio prints */
-    uint64_t cps = (uint64_t)CLOCKS_PER_SEC;
+    /* den = 1,000,000,000 (nanoseconds) -- same for all runs */
+    uint64_t cps = 1000000000ull;
 
-    printf("\nResults (ee_ratio_t -- no IEEE 754):\n");
+    printf("\nResults (ee_ratio_t -- CLOCK_MONOTONIC, no IEEE 754):\n");
     printf("  Min:    %" PRIu64 ".%04" PRIu64 " s\n",
            mn / cps, ((mn % cps) * 10000u) / cps);
     printf("  Max:    %" PRIu64 ".%04" PRIu64 " s\n",
@@ -268,7 +260,7 @@ static void bench(void)
  */
 int main(void)
 {
-    printf("BB84 QKD Simulation v2.1\n");
+    printf("BB84 QKD Simulation v2.2\n");
     printf("C23 / Cascade-lite + h(e) PA + RAMStore + 4-sidecar\n");
     printf("==========================================\n");
 
