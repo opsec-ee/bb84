@@ -1,17 +1,22 @@
 /*
  ==================================================================
  * @file    bb84_types.h
- * @version 2.1
+ * @version 2.2
  * @author  H. Overman (ee)
  * @brief   BB84 QKD core types, constants, h(e) table
  *
- * 11 invocations x 8 runs on i7, -O3 -march=native -flto.
- * Cold-start confirmed (make clean && make, no cache advantage):
- *  Min:        0.0012 s
- *  Max:        0.0020 s
- *  Mean:       0.0017 s
- *  Spread:     +/-43.54%
- *  Throughput: ~915,102 photons/s
+ * 16 runs on i7 (2 x 8, cold-start make clean && make run each).
+ * CLOCK_MONOTONIC wall time (v2.2 -- was clock() CPU time in v2.1).
+ *  Min:        0.0002 s
+ *  Max:        0.0005 s
+ *  Mean:       0.0003 s
+ *  Spread:     +-85.71%
+ *  Throughput: ~5,851,428 photons/s
+ *
+ *  Spread note: session completes in 0.2-0.5ms. At this scale
+ *  OS scheduler granularity (~100us) dominates wall time variance.
+ *  The spread is a measurement artifact, not algorithmic variance.
+ *  16/16 sessions GATE_1. Protocol behaviour correct.
  *
  * Gate-X rate: 5/96 sessions (5.2%) at 3% channel noise.
  * Binomial(256, 0.03) tail above 11% threshold: ~4-5% per session.
@@ -143,15 +148,17 @@ static_assert(NOISE_RATE_N   < RATIO_DENOM, "noise rate must be < 1");
 
 /*
  ==================================================================
- * ee_ratio_t -- exact rational, no floats
+ * ee_ratio_t -- exact rational wall time, no IEEE 754
  *
- * FRONT: raw clock_t tick count from kernel (AS -- approach)
- * LEAD:  CLOCKS_PER_SEC reconciles tick domain to time domain (Pivot)
- * REAR:  ee_ratio_t{num,den} -- exact elapsed rational (IS)
- *   Z: den == 0 (clock unavailable)
- *   1: num/den is exact elapsed time
+ * FRONT: (t0, t1) -- struct timespec pair from CLOCK_MONOTONIC (AS)
+ * LEAD:  (t1.sec-t0.sec)*1e9 + (t1.nsec-t0.nsec) -- ns delta (Pivot)
+ *        den = 1,000,000,000 = 2^9 * 5^9.
+ *        Exact integer arithmetic. No IEEE 754. No epsilon.
+ * REAR:  ee_ratio_t{num=ns_delta, den=1,000,000,000} (IS)
+ *   Z: impossible -- den is a compile-time constant
+ *   1: num/den is exact elapsed wall time in seconds
  *
- * Contract: {{0 [ (start,end) (AS/.\IS) ee_ratio_t ] 1}}
+ * Contract: {{0 [ (timespec,timespec) (AS/.\IS) ee_ratio_t ] 1}}
  ==================================================================
  */
 #include <time.h>
@@ -162,7 +169,7 @@ typedef struct {
 } ee_ratio_t;
 
 /* Defined in bb84_types.c */
-ee_ratio_t ee_ratio_elapsed(clock_t start, clock_t end);
+ee_ratio_t ee_ratio_elapsed(struct timespec t0, struct timespec t1);
 uint64_t   ee_ratio_secs(ee_ratio_t r);
 uint64_t   ee_ratio_frac10k(ee_ratio_t r);
 uint64_t   ee_ratio_throughput(uint64_t count, ee_ratio_t elapsed);
