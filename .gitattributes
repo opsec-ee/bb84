@@ -1,0 +1,4 @@
+# GitHub Linguist overrides
+# Force all source to be classified as C (ISO C23)
+*.c     linguist-language=C
+*.h     linguist-language=C
